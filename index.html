@@ -23,6 +23,10 @@ h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:-.01em}
 .plate:focus-within{box-shadow:0 0 0 3px var(--blue)}
 button{width:100%;margin-top:14px;height:54px;border:0;border-radius:12px;background:var(--blue);color:#fff;font:600 18px -apple-system,Arial,sans-serif}
 button:active{filter:brightness(1.15)}
+.cam{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:10px;background:transparent;color:var(--blue);border:2px solid var(--blue)}
+.cam svg{width:24px;height:24px}
+@media(prefers-color-scheme:dark){.cam{color:#8DB4FF;border-color:#8DB4FF}}
+.card .nota{margin-top:12px;font-size:15px;color:var(--mute)}
 button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 #out{margin-top:22px;min-height:120px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
@@ -42,8 +46,10 @@ button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
     <input id="m" maxlength="10" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1234 BCD" aria-label="Matrícula">
   </div>
   <button id="go" type="button">Ver año</button>
+  <button id="cam" class="cam" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Hacer foto a la matrícula</button>
+  <input id="foto" type="file" accept="image/*" capture="environment" hidden>
   <section id="out" aria-live="polite"></section>
-  <p class="foot">Es el año de primera matriculación, no el de fabricación. Los datos son orientativos, por series de letras.</p>
+  <p class="foot">Es el año de primera matriculación, no el de fabricación. Los datos son orientativos, por series de letras. La foto se lee en tu móvil y no se envía a ningún sitio.</p>
 </main>
 <script>
 // Series de letras por año de matriculación (matrículas desde septiembre de 2000).
@@ -83,20 +89,83 @@ function analizar(texto){
   return{err:'No reconozco el formato',det:'Escribe cuatro números y tres letras, por ejemplo 1234 BCD.'};
 }
 
+// Lectura de la matrícula a partir de una foto (OCR en el propio móvil con tesseract.js).
+const LET='BCDFGHJKLMNPRSTVWXYZ';
+function extraer(texto){
+  // Las vocales y la Q no existen en las matrículas, así que O, Q e I solo pueden ser cifras mal leídas.
+  const t=texto.toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/[OQ]/g,'0').replace(/I/g,'1');
+  let m=t.match(/(\d{4})([BCDFGHJKLMNPRSTVWXYZ]{3})/);
+  if(m)return m[1]+' '+m[2];
+  // Segunda oportunidad: una L en la parte de los números suele ser un 1 mal leído.
+  m=t.match(/([0-9L]{4})([BCDFGHJKLMNPRSTVWXYZ]{3})/);
+  return m?m[1].replace(/L/g,'1')+' '+m[2]:null;
+}
+function cargarOCR(){
+  return new Promise((ok,ko)=>{
+    if(window.Tesseract)return ok();
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload=ok;s.onerror=()=>ko(new Error('sin red'));
+    document.head.append(s);
+  });
+}
+async function prepararImagen(file){
+  const url=URL.createObjectURL(file);
+  const img=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ko;i.src=url});
+  const k=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas');
+  c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+  const g=c.getContext('2d');g.drawImage(img,0,0,c.width,c.height);
+  URL.revokeObjectURL(url);
+  const d=g.getImageData(0,0,c.width,c.height),p=d.data;
+  for(let i=0;i<p.length;i+=4){const y=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];p[i]=p[i+1]=p[i+2]=y}
+  g.putImageData(d,0,0);
+  return c;
+}
+async function leerFoto(file){
+  await cargarOCR();
+  const lienzo=await prepararImagen(file);
+  const w=await Tesseract.createWorker('eng');
+  try{
+    for(const psm of ['11','6']){
+      await w.setParameters({tessedit_char_whitelist:'0123456789'+LET,tessedit_pageseg_mode:psm});
+      const {data}=await w.recognize(lienzo);
+      const r=extraer(data.text);
+      if(r)return r;
+    }
+    return null;
+  }finally{await w.terminate()}
+}
+
 if(typeof document!=='undefined'){
-  const inp=document.getElementById('m'),out=document.getElementById('out');
-  function ver(){
-    const r=analizar(inp.value);
+  const inp=document.getElementById('m'),out=document.getElementById('out'),foto=document.getElementById('foto');
+  function mostrar(r,nota){
     out.textContent='';
     const c=document.createElement('div');c.className='card'+(r.err?' err':'');
     const a=document.createElement('p');a.className='year';a.textContent=r.err||r.y;
     const b=document.createElement('p');b.textContent=r.det;
-    c.append(a,b);out.append(c);
+    c.append(a,b);
+    if(nota){const n=document.createElement('p');n.className='nota';n.textContent=nota;c.append(n)}
+    out.append(c);
   }
-  document.getElementById('go').addEventListener('click',ver);
+  function ver(nota){mostrar(analizar(inp.value),nota)}
+  document.getElementById('go').addEventListener('click',()=>ver());
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();ver();inp.blur()}});
+  document.getElementById('cam').addEventListener('click',()=>foto.click());
+  foto.addEventListener('change',async()=>{
+    const f=foto.files[0];if(!f)return;
+    mostrar({err:'Leyendo la matrícula…',det:'La primera vez tarda unos segundos.'});
+    try{
+      const r=await leerFoto(f);
+      if(r){inp.value=r;ver('Matrícula leída: '+r+'. Si no coincide con la del coche, corrígela arriba y pulsa «Ver año».')}
+      else mostrar({err:'No he podido leerla',det:'Prueba otra vez con la matrícula de frente, bien iluminada y ocupando casi toda la foto. También puedes escribirla a mano.'});
+    }catch(e){
+      mostrar({err:'No he podido leer la foto',det:'Hace falta conexión a internet para leer fotos. Puedes escribir la matrícula a mano.'});
+    }
+    foto.value='';
+  });
 }
-if(typeof module!=='undefined')module.exports={analizar,R};
+if(typeof module!=='undefined')module.exports={analizar,extraer,R};
 </script>
 </body>
 </html>
