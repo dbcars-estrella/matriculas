@@ -128,10 +128,20 @@ async function leerFoto(file,avance){
   avance('Preparando la foto…');
   const lienzo=await prepararImagen(file);
   const textos={'loading tesseract core':'Descargando el lector…','initializing tesseract':'Arrancando el lector…','loading language traineddata':'Descargando el idioma…','initializing api':'Arrancando el lector…','recognizing text':'Leyendo la matrícula…'};
-  const w=await Tesseract.createWorker('eng',1,{logger:m=>{
+  const logger=m=>{
     const t=textos[m.status];
     if(t)avance(t+(m.status==='recognizing text'&&m.progress?' '+Math.round(m.progress*100)+' %':''));
-  }});
+  };
+  // El idioma se descarga de un servidor externo; si el primero no responde en 30 s, se prueba con otro.
+  let w=null;
+  for(const langPath of [null,'https://tessdata.projectnaptha.com/4.0.0']){
+    try{
+      const opc=langPath?{logger,langPath}:{logger};
+      w=await Promise.race([Tesseract.createWorker('eng',1,opc),new Promise((_,ko)=>setTimeout(()=>ko(new Error('idioma')),30000))]);
+      break;
+    }catch(e){avance('Probando otro servidor de idioma…')}
+  }
+  if(!w)throw new Error('idioma');
   try{
     for(const psm of ['11','6']){
       await w.setParameters({tessedit_char_whitelist:'0123456789'+LET,tessedit_pageseg_mode:psm});
@@ -163,11 +173,12 @@ if(typeof document!=='undefined'){
     const avance=t=>mostrar({err:t,det:'La primera vez tarda más, porque descarga el lector (varios MB). No cierres la página.'});
     avance('Empezando…');
     try{
-      const r=await Promise.race([leerFoto(f,avance),new Promise((_,ko)=>setTimeout(()=>ko(new Error('tiempo')),90000))]);
+      const r=await Promise.race([leerFoto(f,avance),new Promise((_,ko)=>setTimeout(()=>ko(new Error('tiempo')),150000))]);
       if(r){inp.value=r;ver('Matrícula leída: '+r+'. Si no coincide con la del coche, corrígela arriba y pulsa «Ver año».')}
       else mostrar({err:'No he podido leerla',det:'Prueba otra vez con la matrícula de frente, bien iluminada y ocupando casi toda la foto. También puedes escribirla a mano.'});
     }catch(e){
       if(e&&e.message==='tiempo')mostrar({err:'Tarda demasiado',det:'La lectura no termina. Comprueba la conexión e inténtalo otra vez, o escribe la matrícula a mano.'});
+      else if(e&&e.message==='idioma')mostrar({err:'No consigo descargar el idioma',det:'Ningún servidor ha respondido. Prueba cambiando de wifi a datos del móvil (o al revés), o escribe la matrícula a mano.'});
       else mostrar({err:'No he podido leer la foto',det:'Hace falta conexión a internet para leer fotos. Puedes escribir la matrícula a mano.'});
     }
     foto.value='';
