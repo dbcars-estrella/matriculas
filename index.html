@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Matrícula">
+<meta name="theme-color" content="#0B3D91">
+<title>Año de matriculación</title>
+<style>
+:root{--bg:#E6E9EC;--ink:#1B2025;--mute:#56616B;--blue:#0B3D91;--card:#fff;--line:#C6CED5;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root{--bg:#14181C;--ink:#EEF1F3;--mute:#93A0AB;--card:#1E242A;--line:#323B43}}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:calc(env(safe-area-inset-top,0px) + 28px) 20px calc(env(safe-area-inset-bottom,0px) + 28px)}
+main{max-width:460px;margin:0 auto}
+h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:-.01em}
+.sub{margin:0 0 22px;color:var(--mute)}
+.plate{display:flex;height:76px;border:3px solid #111;border-radius:10px;background:#fff;overflow:hidden}
+.eu{width:46px;background:var(--blue);color:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;font-weight:700;font-size:15px}
+.plate input{flex:1;min-width:0;border:0;outline:0;background:#fff;color:#111;text-align:center;font:800 36px "DIN Alternate","Arial Narrow","Helvetica Neue",Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;border-radius:0}
+.plate input::placeholder{color:#B5BBC1}
+.plate:focus-within{box-shadow:0 0 0 3px var(--blue)}
+button{width:100%;margin-top:14px;height:54px;border:0;border-radius:12px;background:var(--blue);color:#fff;font:600 18px -apple-system,Arial,sans-serif}
+button:active{filter:brightness(1.15)}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+#out{margin-top:22px;min-height:120px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.year{font-size:64px;line-height:1;font-weight:800;letter-spacing:-.02em;margin:0 0 10px;color:var(--blue)}
+@media(prefers-color-scheme:dark){.year{color:#8DB4FF}}
+.card p{margin:0}
+.err .year{font-size:22px;line-height:1.25;letter-spacing:0;color:var(--ink)}
+.foot{margin:22px 0 0;font-size:14px;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Año de matriculación</h1>
+  <p class="sub">Escribe la matrícula (formato 0000 BBB) y te digo de qué año es.</p>
+  <div class="plate">
+    <div class="eu" aria-hidden="true">E</div>
+    <input id="m" maxlength="10" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1234 BCD" aria-label="Matrícula">
+  </div>
+  <button id="go" type="button">Ver año</button>
+  <section id="out" aria-live="polite"></section>
+  <p class="foot">Es el año de primera matriculación, no el de fabricación. Los datos son orientativos, por series de letras.</p>
+</main>
+<script>
+// Series de letras por año de matriculación (matrículas desde septiembre de 2000).
+// Fuente: tabla de hibridosyelectricos.com (oct. 2026), contrastada con los cambios de letra de El Independiente.
+// Nota: la fuente escribe "HBE" como fin de 2010, pero la E no se usa en matrículas; aquí se usa HBD.
+const T=[[2000,'BBJ','BDR'],[2001,'BFJ','BRT'],[2002,'BSL','CDC'],[2003,'CDV','CRC'],[2004,'CRV','DFF'],[2005,'DFZ','DVB'],[2006,'DVW','FKC'],[2007,'FKY','FYY'],[2008,'FZR','GKH'],[2009,'GKS','GSR'],[2010,'GTC','HBD'],[2011,'HBP','HHT'],[2012,'HJC','HNK'],[2013,'HNT','HVF'],[2014,'HVN','JBY'],[2015,'JCK','JKZ'],[2016,'JLN','JVZ'],[2017,'JWN','KGN'],[2018,'KHG','KSS'],[2019,'KTJ','LDR'],[2020,'LFH','LMC'],[2021,'LML','LVV'],[2022,'LWD','MDD'],[2023,'MDR','MMN'],[2024,'MNC','MXP'],[2025,'MYF','NJS'],[2026,'NJT','NTJ']];
+const AL='BCDFGHJKLMNPRSTVWXYZ';
+const ix=s=>{let n=0;for(const c of s){const k=AL.indexOf(c);if(k<0)return -1;n=n*20+k}return n};
+const R=T.map(([y,a,b])=>({y,a:ix(a),b:ix(b),ra:a,rb:b}));
+
+function buscar(letras){
+  const n=ix(letras);
+  if(n<R[0].a)return{y:2000,r:R[0]};
+  for(let i=0;i<R.length;i++){
+    const r=R[i],nx=R[i+1];
+    if(n>=r.a&&n<=r.b)return{y:r.y,r};
+    if(nx&&n>r.b&&n<nx.a)return{y:r.y,alt:nx.y};
+  }
+  if(n<ix('PBB'))return{reciente:true};
+  return{nueva:true};
+}
+
+function analizar(texto){
+  const raw=texto.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const m=raw.match(/^[CR]?(\d{4})([A-Z]{3})$/);
+  if(m){
+    const l=m[2];
+    if(/[AEIOUQ]/.test(l))return{err:'Esa matrícula no existe',det:'No se usan vocales ni la Q (ni la Ñ). Revisa las tres letras.'};
+    const b=buscar(l);
+    if(b.nueva)return{err:'Serie nueva',det:'Las letras '+l+' son posteriores a la última serie de la tabla.'};
+    if(b.reciente)return{y:'2026 o 2027',det:'Las letras '+l+' son una serie muy reciente, posterior a NTJ.'};
+    if(b.alt)return{y:b.y+' o '+b.alt,det:'Las letras '+l+' caen justo en el cambio de año. Para saberlo seguro, mira el permiso de circulación.'};
+    return{y:String(b.y),det:'Las letras '+l+' caen en la serie de '+b.y+' ('+b.r.ra+' a '+b.r.rb+').'};
+  }
+  if(/^[A-Z]{1,2}\d{4,6}[A-Z]{0,2}$/.test(raw))
+    return{err:'Matrícula anterior a septiembre de 2000',det:'Con letra de provincia no se puede sacar el año: cada provincia avanzaba a su ritmo.'};
+  return{err:'No reconozco el formato',det:'Escribe cuatro números y tres letras, por ejemplo 1234 BCD.'};
+}
+
+if(typeof document!=='undefined'){
+  const inp=document.getElementById('m'),out=document.getElementById('out');
+  function ver(){
+    const r=analizar(inp.value);
+    out.textContent='';
+    const c=document.createElement('div');c.className='card'+(r.err?' err':'');
+    const a=document.createElement('p');a.className='year';a.textContent=r.err||r.y;
+    const b=document.createElement('p');b.textContent=r.det;
+    c.append(a,b);out.append(c);
+  }
+  document.getElementById('go').addEventListener('click',ver);
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();ver();inp.blur()}});
+}
+if(typeof module!=='undefined')module.exports={analizar,R};
+</script>
+</body>
+</html>
