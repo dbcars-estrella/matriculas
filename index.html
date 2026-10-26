@@ -136,7 +136,7 @@ async function leerFoto(file,avance){
   let w=null;
   for(const langPath of [null,'https://tessdata.projectnaptha.com/4.0.0']){
     try{
-      const opc=langPath?{logger,langPath}:{logger};
+      const opc=langPath?{logger,langPath,cacheMethod:'none'}:{logger,cacheMethod:'none'}; // sin caché interna: en iPhone puede quedarse colgada
       w=await Promise.race([Tesseract.createWorker('eng',1,opc),new Promise((_,ko)=>setTimeout(()=>ko(new Error('idioma')),30000))]);
       break;
     }catch(e){avance('Probando otro servidor de idioma…')}
