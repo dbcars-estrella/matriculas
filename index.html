@@ -259,6 +259,13 @@ if(typeof document!=='undefined'){
     }
     foto.value='';
   });
+  // Si la página se abre con ?m=TEXTO (por ejemplo desde un Atajo del iPhone), busca la matrícula en ese texto.
+  const q=new URLSearchParams(location.search).get('m');
+  if(q){
+    const r=corregir(q)||extraer(q);
+    if(r){inp.value=r;ver('Matrícula recibida del iPhone: '+r+'.')}
+    else mostrar({err:'No he encontrado una matrícula',det:'El texto recibido era: «'+q.slice(0,60)+'». Prueba con otra foto o escríbela a mano.'});
+  }
 }
 if(typeof module!=='undefined')module.exports={analizar,extraer,corregir,franjaAzul,R};
 </script>
